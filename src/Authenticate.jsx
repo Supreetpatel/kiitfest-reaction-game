@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import warehouseImg from "./assets/warehouse.png";
+import warehouseImg from "./assets/newbg.png";
 import kiitfestImg from "./assets/kiitfest-main-logo 20.png";
 import midimg from "./assets/mid.png";
 import bottle2 from "./assets/2bottle.png";
