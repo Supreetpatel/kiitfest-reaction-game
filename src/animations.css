@@ -1,0 +1,90 @@
+@keyframes spin-10 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-15 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes spin-12 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes spin-8 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-18 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-22 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@keyframes spin-14 {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.animate-spin-10 {
+  animation: spin-10 10s linear infinite;
+}
+
+.animate-spin-15 {
+  animation: spin-15 15s linear infinite;
+}
+
+.animate-spin-12 {
+  animation: spin-12 12s linear infinite;
+}
+
+.animate-spin-8 {
+  animation: spin-8 8s linear infinite;
+}
+
+.animate-spin-18 {
+  animation: spin-18 18s linear infinite;
+}
+
+.animate-spin-22 {
+  animation: spin-22 22s linear infinite;
+}
+
+.animate-spin-14 {
+  animation: spin-14 14s linear infinite;
+}
