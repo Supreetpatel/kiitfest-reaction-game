@@ -9,12 +9,11 @@ datasource db {
 
 model User {
   id     String  @id @default(cuid())
-  name   String
-  rollNo Int     @unique
+  KFid   String  @unique
   record Record?
   rounds Round[]
 
-  @@index([id, name, rollNo])
+  @@index([id, KFid])
 }
 
 model Record {
@@ -22,13 +21,13 @@ model Record {
   time Int
   rounds Json?
 
-  user   User @relation(fields: [rollNo], references: [rollNo])
-  rollNo Int  @unique
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([id, time, rollNo])
+  @@index([id, time, userId])
 }
 
 model Round {
