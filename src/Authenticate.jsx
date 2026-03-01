@@ -7,7 +7,6 @@ import midimg from "./assets/mid.png";
 import screw from "./assets/screw.png";
 
 const VALIDATE_API_URL = "/api/validate";
-const DIRECT_VALIDATE_API_URL = "https://pvs.kiitfest.org/api/validate";
 const KFID_STORAGE_KEY = "checked-kfid-participants";
 
 const getCheckedKfids = () => {
@@ -83,36 +82,14 @@ export default function Authenticate({ setCurrentUser }) {
     setStatusMessage("Validating payment...");
 
     try {
-      let data = null;
-
-      try {
-        const localResponse = await axios.post(
-          VALIDATE_API_URL,
-          {
-            kfid: normalizedKfid,
-          },
-          { timeout: 12000 },
-        );
-        data = localResponse?.data || null;
-      } catch (localError) {
-        const isLocalUnavailable =
-          !localError?.response &&
-          (localError?.code === "ERR_NETWORK" ||
-            localError?.code === "ECONNABORTED");
-
-        if (!isLocalUnavailable) {
-          throw localError;
-        }
-
-        const fallbackResponse = await axios.post(
-          DIRECT_VALIDATE_API_URL,
-          {
-            kfid: normalizedKfid,
-          },
-          { timeout: 12000 },
-        );
-        data = fallbackResponse?.data || null;
-      }
+      const response = await axios.post(
+        VALIDATE_API_URL,
+        {
+          kfid: normalizedKfid,
+        },
+        { timeout: 12000 },
+      );
+      const data = response?.data || null;
 
       if (data?.success) {
         saveCheckedKfid(normalizedKfid);
