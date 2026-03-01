@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import screw from "./assets/screw.png";
-import newbg from "./assets/Bg2.png";
-import kiitfestImg from "./assets/kiitfest-main-logo 20.png";
+import kiitfestImg from "./assets/kiitfest-main-logo20.png";
 import bottle1 from "./assets/bottle1.png";
 
 const ScrewButton = ({ style, animClass }) => (
@@ -33,7 +32,7 @@ export default function Home() {
     <div
       className="h-screen w-full text-[#f2e6d9] relative overflow-hidden font-['Stardos_Stencil']"
       style={{
-        backgroundImage: `url(${newbg})`,
+        backgroundImage: "url(/assets/bg2.png)",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
