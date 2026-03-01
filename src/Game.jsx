@@ -1,312 +1,446 @@
-import React, { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import useGame from "./hooks/useGame";
-import bgImg from "./assets/bg2.png";
-import kiitfestImg from "./assets/kiitfest-main-logo 20.png";
-import screw from "./assets/screw.png";
-import bottleImg from "./assets/bottle1.png";
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import useGame from './hooks/useGame';
 
-const KEYS = ["a", "s", "d"];
-
-const ScrewDecoration = ({ style, animClass }) => (
-  <div className="pointer-events-none absolute z-20" style={style}>
-    <img
-      src={screw}
-      alt="Screw"
-      className={`w-20 h-20 md:w-28 md:h-28 object-contain opacity-80 drop-shadow-[0_4px_6px_rgba(0,0,0,0.9)] ${animClass}`}
-    />
-  </div>
-);
-
-export default function Game({ currentUser }) {
-  const navigate = useNavigate();
-
-  const rect37Url = encodeURI("/Rectangle 37.svg");
-  const rect18Url = encodeURI("/Rectangle 18.svg");
-
+const App = () => {
+  const bgRaw = '/Screenshot 2026-02-22 145019 2.svg';
+  const rectRaw = '/Rectangle 28.svg';
+  const innerRectRaw = '/Rectangle 32.svg';
+  const bgUrl = encodeURI(bgRaw);
+  const rectUrl = encodeURI(rectRaw);
+  const innerRectUrl = encodeURI(innerRectRaw);
+  const innerScale = 0.5; // scale factor for inner rectangle sizing (reduced further)
+  const screwRaw = '/Clip path group.svg';
+  const screwUrl = encodeURI(screwRaw);
+  const screwSize = 64; // px
+  const buttonRaw = '/Rectangle 35.svg';
+  const buttonUrl = encodeURI(buttonRaw);
+  const bottleRaw = '/Clip path group (1).svg';
+  const bottleUrl = encodeURI(bottleRaw);
+  const logoRaw = '/kiitfest-main-logo 3.svg';
+  const logoUrl = encodeURI(logoRaw);
+  const rect29Raw = '/Rectangle 29.svg';
+  const rect29Url = encodeURI(rect29Raw);
+  const TOTAL_ROUNDS = 5;
+  const BASE_FALL = 500;
+  const [canViewResults, setCanViewResults] = useState(false);
+  const [shouldNavigate, setShouldNavigate] = useState(false);
+  const [resultNavigationState, setResultNavigationState] = useState(null);
+  const [playerName, setPlayerName] = useState('');
+  const [playerRoll, setPlayerRoll] = useState('');
   const {
     activeKey,
     setActiveKey,
+    gameRunning,
+    gameFinished,
     level,
     awaitingStart,
     startPrompt,
     dropKey,
+    dropStart,
     lastTime,
     lastMissed,
     bestTime,
     roundTimes,
+    lastRoll,
+    setLastRoll,
+    bottleResetCount,
     timeToNextDrop,
-    forceMiss,
+    startGame,
+    stopGame,
     handleInput,
-  } = useGame({
-    TOTAL_ROUNDS: 5,
-    onFinish: (rounds, finalBestTime) => {
-      navigate("/result", {
-        state: {
-          rounds,
-          bestTime: finalBestTime,
-          played: true,
-          kfid:
-            currentUser && typeof currentUser.kfid === "string"
-              ? currentUser.kfid
-              : "",
-        },
-      });
-    },
-  });
+    setAwaitingStart,
+    setStartPrompt,
+    setRoundTimes,
+    setBestTime
+  } = useGame({ TOTAL_ROUNDS, onFinish: (newRounds, computedBest) => {
+    try { persistResults(newRounds, computedBest); } catch (e) {}
+    setCanViewResults(true);
+    // stash navigation state so result page can show the just-completed rounds immediately
+    setResultNavigationState({ rounds: newRounds, bestTime: computedBest, roll: playerRoll || lastRoll || '' });
+    setShouldNavigate(true);
+  } });
 
-  const handleInputRef = useRef(handleInput);
-  const forceMissRef = useRef(forceMiss);
-  const pressedKeysRef = useRef(new Set());
-
+  // register global key handlers and forward to `handleInput` from the hook
+  const keys = ['a', 's', 'd'];
   useEffect(() => {
-    handleInputRef.current = handleInput;
-  }, [handleInput]);
-
-  useEffect(() => {
-    forceMissRef.current = forceMiss;
-  }, [forceMiss]);
-
-  useEffect(() => {
-    const pressedKeys = pressedKeysRef.current;
-
-    const onKeyDown = (event) => {
-      const key = String(event.key).toLowerCase();
-      if (!KEYS.includes(key)) return;
-
-      if (event.repeat) return;
-
-      pressedKeys.add(key);
-      if (pressedKeys.size >= 2) {
-        setActiveKey(null);
-        forceMissRef.current();
-        return;
+    const onKeyDown = (e) => {
+      const k = String(e.key).toLowerCase();
+      if (keys.includes(k)) {
+        setActiveKey(k);
+        handleInput(k);
       }
-
-      setActiveKey(key);
-      handleInputRef.current(key);
     };
-
-    const onKeyUp = (event) => {
-      const key = String(event.key).toLowerCase();
-      if (!KEYS.includes(key)) return;
-      pressedKeys.delete(key);
-
-      const remaining = Array.from(pressedKeys);
-      setActiveKey(remaining.length === 1 ? remaining[0] : null);
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-
+    const onKeyUp = () => setActiveKey(null);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     return () => {
-      pressedKeys.clear();
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
     };
-  }, [setActiveKey]);
+  }, [handleInput, setActiveKey]);
 
-  const formatRound = (value) => {
-    if (typeof value === "number") return `${Math.round(value)} ms`;
-    if (value === "missed") return "MISSED";
-    return "--";
+  // On mount, if there's a stored roll from a previous session, try to load rounds from the server
+  // on mount we don't rely on local storage; the user must save their roll to load rounds
+
+  // helper to save player info
+  const savePlayerInfo = async (name, roll) => {
+    // persist player to Postgres via new endpoint and then load rounds
+    try {
+      if (!roll) return;
+      const res = await fetch('/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name || `Player ${roll}`, rollNo: roll })
+      });
+      if (res.ok) {
+        setPlayerName(name || '');
+        setPlayerRoll(String(roll || ''));
+        setLastRoll(String(roll));
+        fetchRoundsFromServer(String(roll));
+      }
+    } catch (e) {
+      // ignore errors; keep in-memory state
+      setPlayerName(name || '');
+      setPlayerRoll(String(roll || ''));
+      setLastRoll(String(roll));
+    }
   };
 
+  // fetch rounds for a roll from backend and update state
+  async function fetchRoundsFromServer(roll) {
+    if (!roll) return;
+    try {
+      const res = await fetch('/api/my-rounds?roll=' + encodeURIComponent(roll));
+      if (!res.ok) return;
+      const j = await res.json();
+      if (j && j.rounds) {
+        setRoundTimes(normalizeRounds(j.rounds));
+      }
+    } catch (e) {
+      // ignore errors and keep local state
+    }
+  }
+
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (shouldNavigate) {
+      setShouldNavigate(false);
+      const state = resultNavigationState || { rounds: roundTimes, bestTime };
+      setResultNavigationState(null);
+      navigate('/result', { state });
+    }
+  }, [shouldNavigate, navigate]);
+
+  // normalize round arrays coming from server/localStorage
+  function normalizeRounds(rt) {
+    try {
+      if (typeof rt === 'string') {
+        const trimmed = rt.trim();
+        if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || trimmed.startsWith('\"')) {
+          rt = JSON.parse(rt);
+        }
+      }
+    } catch (e) {
+      // ignore parse
+    }
+    if (Array.isArray(rt) && rt.length === 1 && Array.isArray(rt[0])) rt = rt[0];
+    if (!Array.isArray(rt)) return Array(TOTAL_ROUNDS).fill(null);
+    const out = rt.slice(0, TOTAL_ROUNDS).map((v) => {
+      if (v == null) return null;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const n = Number(v);
+        if (!Number.isNaN(n)) return n;
+        return v;
+      }
+      if (typeof v === 'object') {
+        // allow nested { time, value }
+        if (typeof v.time === 'number') return v.time;
+        if (typeof v.value === 'string') return v.value;
+        return v;
+      }
+      return null;
+    });
+    while (out.length < TOTAL_ROUNDS) out.push(null);
+    return out;
+  }
+
+  // persist results helper used on finish or when user stops
+  async function persistResults(newRounds, computedBest) {
+    const name = playerName || `Player ${playerRoll || ''}`;
+    const roll = playerRoll || lastRoll || '';
+    try {
+      await fetch('/api/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, rollNo: roll, bestTime: computedBest, rounds: newRounds })
+      });
+      // refresh rounds from server
+      try {
+        setLastRoll(String(roll));
+        const rres = await fetch('/api/my-rounds?roll=' + encodeURIComponent(roll));
+        if (rres.ok) {
+          const rj = await rres.json();
+          if (rj && rj.rounds) setRoundTimes(normalizeRounds(rj.rounds));
+        }
+      } catch (e) {}
+    } catch (e) {
+      // ignore post errors
+    }
+  }
+
+  // Whenever lastRoll changes (e.g., after a submit), fetch fresh rounds from server
+  useEffect(() => {
+    if (!lastRoll) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/my-rounds?roll=' + encodeURIComponent(lastRoll));
+        if (res.ok) {
+          const j = await res.json();
+          if (j && j.rounds) setRoundTimes(normalizeRounds(j.rounds));
+        }
+      } catch (e) {}
+    })();
+  }, [lastRoll]);
+
+  
+
+  // Input is forwarded to `handleInput` provided by the `useGame` hook
+
+  const boxes = [
+    { left: 17, top: 19, width: 500, height: 169, label: 'Round', value: String(level) },
+    { left: 524, top: 19, width: 500, height: 169, label: 'Time', value: lastMissed ? 'missed' : (lastTime == null ? '--' : `${Math.round(lastTime)} ms`) },
+  ];
+
+  // Normalize rounds for display: handle cases where rounds may be stored as JSON string,
+  // nested array, or missing. Ensure an array of length TOTAL_ROUNDS.
+  const roundSummary = (() => {
+    const rt = normalizeRounds(roundTimes);
+    return rt.map((v) => {
+      if (v == null) return '--';
+      if (typeof v === 'number') return `${Math.round(v)}ms`;
+      if (typeof v === 'string') return v === 'missed' ? 'missed' : v;
+      if (typeof v === 'object' && v !== null) {
+        if (typeof v.time === 'number') return `${Math.round(v.time)}ms`;
+        if (typeof v.value === 'string') return v.value;
+      }
+      return '--';
+    }).join(' │ ');
+  })();
+
+  const displayRounds = (() => {
+    const rt = normalizeRounds(roundTimes);
+    const out = Array.from({ length: TOTAL_ROUNDS }).map((_, i) => (rt[i] != null ? rt[i] : null));
+    return out;
+  })();
+
   return (
-    <div
-      className="relative w-full h-screen bg-cover bg-center bg-no-repeat overflow-hidden font-['Stardos_Stencil'] text-[#f2e6d9]"
-      style={{ backgroundImage: `url(${bgImg})` }}
+    <>
+      <style>{`@keyframes fall { from { transform: translateX(-50%) translateY(0); } to { transform: translateX(-50%) translateY(var(--fall-distance,260px)); } }`}</style>
+      <div
+      style={{
+        minHeight: '100vh',
+        backgroundImage: `url(${bgUrl})`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+      }}
     >
-      <style>{`
-        @keyframes float { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-12px); } }
-        @keyframes flicker {
-          0%, 19.9%, 22%, 62.9%, 64%, 64.9%, 70%, 100% { opacity: 1; text-shadow: 0 0 8px rgba(207,123,68,0.45); }
-          20%, 21.9%, 63%, 63.9%, 65%, 69.9% { opacity: 0.8; text-shadow: none; }
-        }
-        @keyframes bottleFall {
-          0% { transform: translateY(-120px) rotate(-12deg); opacity: 0.85; }
-          100% { transform: translateY(0) rotate(8deg); opacity: 1; }
-        }
-        @keyframes bottleIdle {
-          0%,100% { transform: translateY(0px) rotate(-8deg); }
-          50% { transform: translateY(-5px) rotate(6deg); }
-        }
-        .anim-float { animation: float 6s ease-in-out infinite; }
-        .anim-flicker { animation: flicker 3.2s infinite alternate; }
-        .bottle-fall { animation: bottleFall 0.8s ease-out forwards; }
-        .bottle-idle { animation: bottleIdle 2.6s ease-in-out infinite; }
-        .panel-glow { box-shadow: 0 12px 32px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(207,123,68,0.08); }
-      `}</style>
-
-      <div className="absolute inset-0 bg-black/55 pointer-events-none" />
-      <div className="absolute inset-0 bg-linear-to-b from-black/20 via-transparent to-black/35 pointer-events-none" />
-
-      <ScrewDecoration
-        style={{ top: "-10px", left: "-10px" }}
-        animClass="animate-spin-18"
-      />
-      <ScrewDecoration
-        style={{ top: "-10px", right: "-10px" }}
-        animClass="animate-spin-22"
-      />
-      <ScrewDecoration
-        style={{ bottom: "-10px", left: "-10px" }}
-        animClass="animate-spin-14"
-      />
-      <ScrewDecoration
-        style={{ bottom: "-10px", right: "-10px" }}
-        animClass="animate-spin-10"
-      />
-
-      <div className="relative z-10 h-full px-4 py-3 flex flex-col items-center overflow-hidden">
-        <div className="w-full flex justify-center pt-1 pb-2 anim-float">
-          <img
-            src={kiitfestImg}
-            alt="KIITFest"
-            className="w-44 md:w-56 drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]"
-          />
-        </div>
-
-        <div className="text-center mb-3 px-3">
-          <h1 className="text-3xl md:text-5xl font-black tracking-[0.18em] text-[#f2e6d9] drop-shadow-[0_5px_6px_rgba(0,0,0,0.75)]">
-            REACTION GAME
-          </h1>
-        </div>
-
-        <div className="w-full max-w-6xl bg-[#0a0604]/72 border border-[#8c5e3c]/50 rounded-3xl backdrop-blur-md p-4 md:p-6 shadow-2xl panel-glow">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-            {[
-              { title: "ROUND", value: `${level}/5`, isMiss: false },
-              {
-                title: "NEXT DROP",
-                value:
-                  timeToNextDrop == null
-                    ? "--"
-                    : `${Math.ceil(timeToNextDrop / 1000)}s`,
-                isMiss: false,
-              },
-              {
-                title: "LAST HIT",
-                value:
-                  typeof lastTime === "number"
-                    ? `${Math.round(lastTime)} ms`
-                    : lastMissed
-                      ? "MISS"
-                      : "--",
-                isMiss: lastMissed,
-              },
-            ].map((card) => (
-              <div
-                key={card.title}
-                className="relative h-22 md:h-24 transition-transform duration-300 hover:scale-[1.02]"
-              >
-                <img
-                  src={rect37Url}
-                  alt={card.title}
-                  className="w-full h-full object-fill"
-                />
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className="text-xs md:text-sm tracking-[0.24em] text-[#d9a067] uppercase font-bold">
-                    {card.title}
-                  </div>
-                  <div
-                    className={`text-xl md:text-3xl font-black mt-1 ${card.isMiss ? "text-red-400" : "text-white"}`}
-                  >
-                    {card.value}
-                  </div>
+      
+      {/* previous game-over modal removed — game completes only after all rounds */}
+      <div style={{ position: 'relative', width: 1508, height: 958, margin: '0 auto' }}>
+        {boxes.map((b, i) => {
+          const innerW = Math.round((b.width - 40) * innerScale);
+          const innerH = Math.round((b.height - 36) * innerScale);
+            return (
+            <div
+              key={i}
+              onClick={() => {
+                // difficulty removed; no click actions on these boxes
+              }}
+              style={{ position: 'absolute', left: b.left, top: b.top, width: b.width, height: b.height, overflow: 'hidden', cursor: 'default' }}
+            >
+              <img
+                src={rectUrl}
+                alt={`box-${i}`}
+                style={{ width: '100%', height: '100%', display: 'block' }}
+              />
+              {/* Heading inside outer box but outside inner box */}
+                <div style={{ position: 'absolute', left: '50%', top: 25, transform: 'translateX(-50%)', color: '#CC8458', pointerEvents: 'none' }}>
+                  <div style={{ fontSize: 40, fontWeight: 800, margin: 0, padding: 0, textAlign: 'center' }}>{String(b.label).trim()}</div>
                 </div>
-              </div>
-            ))}
-          </div>
 
-          <div className="text-center mb-6 min-h-12 flex items-center justify-center">
-            <div className="px-8 py-2 rounded-full bg-black/40 border border-[#8c5e3c]/45 inline-flex items-center justify-center min-h-12.5">
-              <h2
-                className={`text-lg md:text-2xl anim-flicker ${lastMissed && !dropKey ? "text-red-400" : "text-[#ffbf75]"}`}
+              {/* Inner container centered at bottom, contains inner image and centered value */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: '51%',
+                  transform: 'translateX(-50%)',
+                  bottom: 30,
+                  width: innerW,
+                  height: innerH,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxSizing: 'border-box',
+                  pointerEvents: 'none',
+                }}
               >
-                {awaitingStart
-                  ? startPrompt
-                  : dropKey
-                    ? `PRESS [ ${dropKey.toUpperCase()} ]`
-                    : lastMissed
-                      ? "MISSED! STAY SHARP"
-                      : "GET READY..."}
-              </h2>
+                <img src={innerRectUrl} alt={`inner-${i}`} style={{ width: '100%', height: '100%', display: 'block' }} />
+                <div style={{ position: 'absolute', color: ' #8B5A2B', fontWeight: 700, fontSize: 18 }}>{b.value}</div>
+              </div>
+
+              {/* Screws at four corners of outer box */}
+              <img src={screwUrl} alt={`screw-tl-${i}`} style={{ position: 'absolute', left: 60, top: 6, width: screwSize, height: screwSize, pointerEvents: 'none' }} />
+              <img src={screwUrl} alt={`screw-tr-${i}`} style={{ position: 'absolute', left: b.width - screwSize - 60, top: 6, width: screwSize, height: screwSize, pointerEvents: 'none' }} />
+              <img src={screwUrl} alt={`screw-bl-${i}`} style={{ position: 'absolute', left: 60, top: b.height - screwSize - 18, width: screwSize, height: screwSize, pointerEvents: 'none' }} />
+              <img src={screwUrl} alt={`screw-br-${i}`} style={{ position: 'absolute', left: b.width - screwSize - 60, top: b.height - screwSize - 18, width: screwSize, height: screwSize, pointerEvents: 'none' }} />
+            </div>
+          );
+        })}
+        {/* Press-any-key prompt shown below the top boxes */}
+        {awaitingStart && (
+          <div style={{ position: 'absolute', top: 165, left: '50%', transform: 'translateX(-50%)', color: '#CC8458', pointerEvents: 'none', fontFamily: "Stardos Stencil, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif", fontWeight: 700, fontSize: 28, textAlign: 'center', maxWidth: 900 }}>
+            {startPrompt}
+          </div>
+        )}
+        {/* Player info modal removed: play as guest by default */}
+        {/* Three control buttons (A S D) centered at bottom */}
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: 600, display: 'flex', gap: 300 }}>
+            {keys.map((k, i) => {
+                      const isActive = activeKey === k;
+                      const isDropping = dropKey === k;
+                      const pressOffset = isActive ? -6 : 0;
+                      const fallDuration = Math.max(300, BASE_FALL - (level - 1) * 30);
+                      const fallDistance = 260; // visual distance matched by keyframes default
+                      const bottleTransform = `translateX(-50%) translateY(${pressOffset}px)`;
+              return (
+                <div key={k} style={{ position: 'relative', width: 120, height: 120 }}>
+                <button
+                  onMouseDown={() => setActiveKey(k)}
+                  onMouseUp={() => setActiveKey(null)}
+                  onMouseLeave={() => setActiveKey(null)}
+                  onClick={() => handleInput(k)}
+                  aria-label={`key-${k}`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    background: `url(${buttonUrl}) no-repeat center/100% 100%`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    transform: isActive ? 'scale(0.95)' : 'none',
+                    transition: 'transform 80ms ease',
+                    fontFamily: "Stardos Stencil, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+                    fontSize: 40,
+                    fontWeight: 800,
+                    color: '#8B5A2B',
+                  }}
+                >
+                  {k.toUpperCase()}
+                </button>
+
+                  
+
+                  {/* Bottle below the button, connected visually and reacting to active state */}
+                  <img
+                  key={`${k}-${bottleResetCount}`}
+                  src={bottleUrl}
+                  alt={`bottle-${k}`}
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: '50%',
+                    transform: bottleTransform,
+                    width: 300,
+                    height: 'auto',
+                    marginTop: 8,
+                    pointerEvents: 'none',
+                    transition: 'none',
+                    animation: gameFinished ? 'none' : (isDropping ? `fall ${fallDuration}ms linear forwards` : 'none'),
+                    // pass fall distance so keyframes can use it
+                    ['--fall-distance']: `${fallDistance}px`,
+                  }}
+                />
+              </div>
+            );
+          })}
+          {/* invisible baseline: triggers game-over when bottle crosses it */}
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 'calc(100% + 260px)', height: 6, background: 'transparent', pointerEvents: 'none', zIndex: 2 }} />
+        </div>
+
+        {/* stats panel removed — last time shown in top Time box */}
+      </div>
+        {/* right-side rectangle showing stored times for each round */}
+        <div style={{ position: 'fixed', right: 11, top: 12, zIndex: 9998, width: 370, pointerEvents: 'none',height:"auto" }}>
+          <div style={{ position: 'relative', width: '100%', display: 'block', border: '2px solid rgba(139,90,43,0.15)', borderRadius: 8, overflow: 'hidden' }}>
+            <img src={rect29Url} alt="round-times" style={{ width: '100%', height: 'auto', display: 'block' }} />
+            <div style={{ position: 'absolute', left: 30, right: 50, top: 40, bottom: 18, color: '#8B5A2B', fontWeight: 700, textAlign: 'left', fontSize: 18, pointerEvents: 'auto', fontFamily: "Stardos Stencil, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif", lineHeight: '0.5', overflow: 'hidden' }}>
+              <div style={{ fontSize: 25, marginBottom: 6 ,textAlign:"center"}}>Round results</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+                {Array.from({ length: TOTAL_ROUNDS }).map((_, idx) => {
+                  const raw = displayRounds[idx];
+                  let text = '--';
+                  if (raw == null) text = '--';
+                  else if (typeof raw === 'number') text = `${Math.round(raw)} ms`;
+                  else if (typeof raw === 'string') text = raw === 'missed' ? 'missed' : raw;
+                  else if (typeof raw === 'object' && raw !== null) {
+                    // support object shape { time, value }
+                    if (typeof raw.time === 'number') text = `${Math.round(raw.time)} ms`;
+                    else if (typeof raw.value === 'string') text = raw.value;
+                  }
+                  return (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px',  borderRadius: 6, boxShadow: '0 4px 10px rgba(0,0,0,0.06)' }}>
+                      <div style={{ fontWeight: 800 }}>Round {idx + 1}</div>
+                      <div style={{ fontWeight: 800, color: text === 'missed' ? '#cc4444' : '#8B5A2B' }}>{text}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-3 gap-4 md:gap-10 mb-4">
-            {KEYS.map((keyLabel) => {
-              const isTarget = dropKey === keyLabel && !awaitingStart;
-              const isPressed = activeKey === keyLabel;
-              return (
-                <div
-                  key={keyLabel}
-                  className={`flex flex-col items-center rounded-xl py-2 transition-colors ${isTarget ? "bg-[#8c5e3c]/15" : "bg-black/15"}`}
-                >
-                  <button
-                    onMouseDown={() => setActiveKey(keyLabel)}
-                    onMouseUp={() => setActiveKey(null)}
-                    onMouseLeave={() => setActiveKey(null)}
-                    onClick={() => handleInput(keyLabel)}
-                    className={`relative w-20 h-20 md:w-28 md:h-28 transition-transform duration-150 active:scale-90 hover:scale-105 cursor-pointer ${isPressed ? "scale-95" : ""}`}
-                    aria-label={`key-${keyLabel}`}
-                  >
-                    <img
-                      src={rect18Url}
-                      alt={`${keyLabel}-button`}
-                      className={`absolute inset-0 w-full h-full object-fill ${isTarget ? "brightness-125" : ""}`}
-                    />
-                    <span
-                      className={`absolute inset-0 flex items-center justify-center text-3xl md:text-5xl font-black ${isTarget ? "text-white" : "text-[#d9a067]"}`}
-                    >
-                      {keyLabel.toUpperCase()}
-                    </span>
-                  </button>
-
-                  <div className="relative mt-5 h-40 md:h-56 w-full flex items-end justify-center">
-                    <div className="absolute top-0 w-px h-full bg-linear-to-b from-[#8c5e3c]/50 to-transparent" />
-                    <img
-                      src={bottleImg}
-                      alt={`${keyLabel}-bottle`}
-                      className={`w-20 md:w-28 h-auto drop-shadow-[0_18px_20px_rgba(0,0,0,0.9)] ${isTarget ? "bottle-fall" : "bottle-idle opacity-45 grayscale-[0.45]"}`}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </div>
 
-        <div className="fixed top-6 right-5 z-60 w-64 md:w-72 lg:w-80 border border-[#8c5e3c]/45 rounded-xl bg-[#0a0604]/78 backdrop-blur-md overflow-hidden panel-glow">
-          <div className="px-4 py-2 border-b border-[#8c5e3c]/35 text-[#d9a067] font-bold text-center tracking-widest uppercase text-sm">
-            Round Results
+        {/* KIITFEST logo in the page corner */}
+        <img
+          src={logoUrl}
+          alt="kiitfest-logo"
+          style={{
+            position: 'fixed',
+            bottom: 20,
+            right: 20,
+            width: 200,
+            height: 'auto',
+            pointerEvents: 'none',
+            zIndex: 9999,
+          }}
+        />
+        {/* View Result button shown after game finishes */}
+        {gameFinished && canViewResults && (
+          <div style={{ position: 'fixed', left: '50%', top: '40%', transform: 'translateX(-50%)', zIndex: 10000 }}>
+            <button
+              onClick={async () => {
+                try { await persistResults(roundTimes, bestTime); } catch (e) {}
+                try {
+                  navigate('/result', { state: { rounds: roundTimes, bestTime, roll: playerName || playerRoll || lastRoll || '' } });
+                } catch (e) {
+                  try { window.location.assign('/result'); } catch (err) { window.location.href = '/result'; }
+                }
+              }}
+              style={{ padding: '14px 20px', fontSize: 18, borderRadius: 8, background: '#8B5A2B', color: 'white', border: 'none', fontWeight: 800 }}
+            >
+              View Result
+            </button>
           </div>
-          <div className="max-h-64 overflow-auto">
-            {Array.from({ length: 5 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="px-4 py-2 flex items-center justify-between border-b border-[#8c5e3c]/20 text-sm"
-              >
-                <span className="text-[#d9a067]">Round {idx + 1}</span>
-                <span
-                  className={
-                    roundTimes[idx] === "missed"
-                      ? "text-red-400 font-bold"
-                      : "text-white"
-                  }
-                >
-                  {formatRound(roundTimes[idx])}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="px-4 py-2 text-center text-[#ffbf75] text-sm font-bold">
-            Best:{" "}
-            {typeof bestTime === "number" ? `${Math.round(bestTime)} ms` : "--"}
-          </div>
-        </div>
-      </div>
+        )}
+
+        {/* Stop button removed per user request */}
+      
     </div>
+    </>
   );
-}
+};
+export default App;
