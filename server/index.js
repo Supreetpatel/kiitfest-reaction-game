@@ -2,7 +2,8 @@ import express from "express";
 import cors from "cors";
 import axios from "axios";
 
-const PAYMENT_VALIDATE_URL = process.env.NEXT_BASE_URL;
+const PAYMENT_VALIDATE_URL =
+  process.env.PAYMENT_VALIDATE_URL || process.env.NEXT_BASE_URL;
 
 const app = express();
 app.use(cors());
@@ -100,6 +101,14 @@ app.post("/api/validate", async (req, res) => {
       return res.status(200).json({
         success: false,
         message: "Invalid KFID format. Use KF followed by 8 digits.",
+      });
+    }
+
+    if (!PAYMENT_VALIDATE_URL) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "Validation API is not configured. Set PAYMENT_VALIDATE_URL in Vercel environment variables.",
       });
     }
 
@@ -327,6 +336,10 @@ app.get("/api/my-rounds", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 4001;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+export default app;
