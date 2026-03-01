@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import warehouseImg from "./assets/newbg2.png";
-import kiitfestImg from "./assets/kiitfest-main-logo 20.png";
+import kiitfestImg from "./assets/kiitfest-main-logo20.png";
 import midimg from "./assets/mid.png";
 import screw from "./assets/screw.png";
 
