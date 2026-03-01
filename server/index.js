@@ -7,15 +7,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// generate a KF id of the form 'KF' + 8 digits, ensuring uniqueness
+async function generateUniqueKfId() {
+  while (true) {
+    const num = Math.floor(Math.random() * 1e8).toString().padStart(8, '0');
+    const id = `KF${num}`;
+    const exists = await prisma.user.findUnique({ where: { KFid: id } });
+    if (!exists) return id;
+    // else loop and try again
+  }
+}
+
 // POST /api/user - upsert a user by roll
 app.post('/api/user', async (req, res) => {
   try {
     const { name, rollNo } = req.body;
     if (!rollNo) return res.status(400).json({ error: 'rollNo required' });
+    const kfid = await generateUniqueKfId();
     const user = await prisma.user.upsert({
       where: { rollNo: Number(rollNo) },
       update: { name: name || undefined },
-      create: { name: name || `Player ${rollNo}`, rollNo: Number(rollNo) }
+      create: { name: name || `Player ${rollNo}`, rollNo: Number(rollNo), KFid: kfid }
     });
     return res.json({ ok: true, user });
   } catch (err) {
@@ -48,11 +60,12 @@ app.post('/api/results', async (req, res) => {
       // pad with nulls if shorter
       while (processedRounds.length < TOTAL_ROUNDS) processedRounds.push(null);
     }
-    // upsert user
+    // upsert user (ensure KFid on create)
+    const kfid = await generateUniqueKfId();
     await prisma.user.upsert({
       where: { rollNo: Number(rollNo) },
       update: { name: name || undefined },
-      create: { name: name || `Player ${rollNo}`, rollNo: Number(rollNo) }
+      create: { name: name || `Player ${rollNo}`, rollNo: Number(rollNo), KFid: kfid }
     });
     // upsert record (store processedRounds if provided)
     const rec = await prisma.record.upsert({
