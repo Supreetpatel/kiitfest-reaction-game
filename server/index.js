@@ -2,8 +2,9 @@ import express from "express";
 import cors from "cors";
 import axios from "axios";
 
-const PAYMENT_VALIDATE_URL =
-  process.env.PAYMENT_VALIDATE_URL || process.env.NEXT_BASE_URL;
+const PAYMENT_VALIDATE_URL = process.env.PAYMENT_VALIDATE_URL;
+const PAYMENT_NOT_DONE_REGEX =
+  /(payment.*not.*done|not paid|payment.*pending|unpaid)/i;
 
 const app = express();
 app.use(cors());
@@ -43,8 +44,9 @@ const withPrisma = async (res) => {
   if (db) return db;
 
   res.status(503).json({
-    ok: false,
-    error:
+    success: false,
+    code: "DATABASE_UNAVAILABLE",
+    message:
       "Database service unavailable. Run `npm run prisma:generate` and restart server.",
   });
   return null;
@@ -93,23 +95,46 @@ const normalizeRounds = (rounds, totalRounds = 5) => {
   return out;
 };
 
+const sendError = (res, status, code, message, extra = {}) => {
+  return res.status(status).json({
+    success: false,
+    code,
+    message,
+    ...extra,
+  });
+};
+
+const resolveUpstreamMessage = (payload) => {
+  if (!payload) return "Payment validation failed";
+  if (typeof payload === "string") return payload;
+  return payload?.message || payload?.error || "Payment validation failed";
+};
+
+const isPaymentNotCompleted = (payload) => {
+  const message = resolveUpstreamMessage(payload);
+  return PAYMENT_NOT_DONE_REGEX.test(String(message || ""));
+};
+
 app.post("/api/validate", async (req, res) => {
   try {
     const kfid = normalizeKfid(req?.body?.kfid);
 
     if (!kfid || !/^KF\d{8}$/.test(kfid)) {
-      return res.status(200).json({
-        success: false,
-        message: "Invalid KFID format. Use KF followed by 8 digits.",
-      });
+      return sendError(
+        res,
+        400,
+        "INVALID_KFID_FORMAT",
+        "Invalid KFID format. Use KF followed by 8 digits.",
+      );
     }
 
     if (!PAYMENT_VALIDATE_URL) {
-      return res.status(500).json({
-        success: false,
-        message:
-          "Validation API is not configured. Set PAYMENT_VALIDATE_URL in Vercel environment variables.",
-      });
+      return sendError(
+        res,
+        500,
+        "VALIDATION_API_NOT_CONFIGURED",
+        "Validation API is not configured. Set PAYMENT_VALIDATE_URL in environment variables.",
+      );
     }
 
     const { data } = await axios.post(
@@ -121,25 +146,72 @@ app.post("/api/validate", async (req, res) => {
       },
     );
 
+    if (data?.success === false && isPaymentNotCompleted(data)) {
+      return res.status(402).json({
+        ...data,
+        success: false,
+        code: "PAYMENT_NOT_COMPLETED",
+        message: data?.message || "Payment is not completed for this KFID.",
+      });
+    }
+
+    if (data?.success === false) {
+      return res.status(400).json({
+        ...data,
+        success: false,
+        code: data?.code || "VALIDATION_FAILED",
+        message: resolveUpstreamMessage(data),
+      });
+    }
+
     return res.status(200).json(data);
   } catch (error) {
     const upstreamStatus = error?.response?.status;
     const upstreamData = error?.response?.data;
+    const networkCode = error?.code;
 
-    if (upstreamStatus === 200 && upstreamData) {
-      return res.status(200).json(upstreamData);
+    if (
+      upstreamData &&
+      (isPaymentNotCompleted(upstreamData) ||
+        upstreamStatus === 402 ||
+        upstreamStatus === 403)
+    ) {
+      return sendError(
+        res,
+        402,
+        "PAYMENT_NOT_COMPLETED",
+        resolveUpstreamMessage(upstreamData),
+      );
     }
 
-    if (upstreamStatus === 500) {
-      return res
-        .status(500)
-        .json({ success: false, message: "Internal server error" });
+    if (upstreamData) {
+      return sendError(
+        res,
+        400,
+        "VALIDATION_FAILED",
+        resolveUpstreamMessage(upstreamData),
+      );
     }
 
-    const message =
-      upstreamData?.message || error?.message || "Internal server error";
+    if (
+      networkCode === "ECONNABORTED" ||
+      networkCode === "ENOTFOUND" ||
+      networkCode === "ECONNREFUSED"
+    ) {
+      return sendError(
+        res,
+        503,
+        "VALIDATION_SERVICE_UNREACHABLE",
+        "Validation service unreachable. Please check internet/server and try again.",
+      );
+    }
 
-    return res.status(500).json({ success: false, message });
+    return sendError(
+      res,
+      500,
+      "INTERNAL_VALIDATION_ERROR",
+      error?.message || "Payment validation failed",
+    );
   }
 });
 
@@ -150,7 +222,7 @@ app.post("/api/user", async (req, res) => {
 
     const kfid = resolveKfid(req.body || {});
     if (!kfid || !/^KF\d{8}$/.test(kfid)) {
-      return res.status(400).json({ error: "valid kfid required" });
+      return sendError(res, 400, "INVALID_KFID_FORMAT", "Valid KFID required.");
     }
 
     const user = await db.user.upsert({
@@ -162,7 +234,12 @@ app.post("/api/user", async (req, res) => {
     return res.json({ ok: true, user: { id: user.id, kfid: user.KFid } });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "server error" });
+    return sendError(
+      res,
+      500,
+      "INTERNAL_USER_API_ERROR",
+      "Server error while creating user.",
+    );
   }
 });
 
@@ -176,7 +253,7 @@ app.post("/api/results", async (req, res) => {
     const kfid = resolveKfid(req.body || {});
 
     if (!kfid || !/^KF\d{8}$/.test(kfid)) {
-      return res.status(400).json({ error: "valid kfid required" });
+      return sendError(res, 400, "INVALID_KFID_FORMAT", "Valid KFID required.");
     }
 
     const processedRounds = normalizeRounds(rounds, TOTAL_ROUNDS);
@@ -243,7 +320,12 @@ app.post("/api/results", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "server error" });
+    return sendError(
+      res,
+      500,
+      "INTERNAL_RESULTS_API_ERROR",
+      "Server error while saving results.",
+    );
   }
 });
 
@@ -269,7 +351,12 @@ app.get("/api/leaderboard", async (req, res) => {
     return res.json({ ok: true, data });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "server error" });
+    return sendError(
+      res,
+      500,
+      "INTERNAL_LEADERBOARD_API_ERROR",
+      "Server error while loading leaderboard.",
+    );
   }
 });
 
@@ -286,7 +373,7 @@ app.get("/api/my-rounds", async (req, res) => {
     });
 
     if (!kfid) {
-      return res.status(400).json({ error: "kfid query required" });
+      return sendError(res, 400, "MISSING_KFID_QUERY", "kfid query required");
     }
 
     const user = await db.user.findUnique({ where: { KFid: kfid } });
@@ -331,7 +418,12 @@ app.get("/api/my-rounds", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ error: "server error" });
+    return sendError(
+      res,
+      500,
+      "INTERNAL_ROUNDS_API_ERROR",
+      "Server error while loading rounds.",
+    );
   }
 });
 

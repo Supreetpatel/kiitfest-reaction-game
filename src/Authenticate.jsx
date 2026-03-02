@@ -107,21 +107,43 @@ export default function Authenticate({ setCurrentUser }) {
         return;
       }
 
-      setErrorMessage(data?.message || "Payment not done or KFID missing.");
+      setErrorMessage(data?.message || "Payment validation failed.");
     } catch (error) {
-      if (error?.response?.status === 500) {
+      const status = error?.response?.status;
+      const code = error?.response?.data?.code;
+      const backendMessage = error?.response?.data?.message;
+      const networkCode = error?.code;
+
+      if (code === "PAYMENT_NOT_COMPLETED" || status === 402) {
+        setErrorMessage(
+          backendMessage || "Payment is not completed for this KFID.",
+        );
+        return;
+      }
+
+      if (backendMessage) {
+        setErrorMessage(backendMessage);
+        return;
+      }
+
+      if (status === 500) {
         setErrorMessage("Internal server error. Please try again.");
         return;
       }
 
-      if (error?.response?.data?.message) {
-        setErrorMessage(error.response.data.message);
+      if (
+        code === "VALIDATION_SERVICE_UNREACHABLE" ||
+        status === 503 ||
+        networkCode === "ECONNABORTED" ||
+        networkCode === "ERR_NETWORK"
+      ) {
+        setErrorMessage(
+          "Validation service unreachable. Please check internet/server and try again.",
+        );
         return;
       }
 
-      setErrorMessage(
-        "Validation service unreachable. Please check internet/server and try again.",
-      );
+      setErrorMessage("Payment validation failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

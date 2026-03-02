@@ -690,15 +690,7 @@ const App = ({ currentUser }) => {
                     },
                   });
                 } catch (error) {
-                  console.error(
-                    "Primary navigation failed, using fallback",
-                    error,
-                  );
-                  try {
-                    window.location.assign("/result");
-                  } catch {
-                    window.location.href = "/result";
-                  }
+                  console.error("Primary navigation failed", error);
                 }
               }}
               style={{
