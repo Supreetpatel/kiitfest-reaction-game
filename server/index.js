@@ -118,6 +118,10 @@ const isPaymentNotCompleted = (payload) => {
   return PAYMENT_NOT_DONE_REGEX.test(String(message || ""));
 };
 
+app.get("/", (req, res) => {
+  res.send("Server is running");
+});
+
 app.post(INTERNAL_VALIDATE_PATH, async (req, res) => {
   try {
     const kfid = normalizeKfid(req?.body?.kfid);
@@ -398,6 +402,8 @@ app.get("/api/leaderboard", async (req, res) => {
       bestTime: typeof r.time === "number" ? r.time : null,
       rounds: r.rounds || null,
     }));
+
+    console.log("data: ", data);
 
     return res.json({ ok: true, data });
   } catch (error) {

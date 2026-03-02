@@ -30,7 +30,7 @@ export default function Home({ currentUser }) {
 
   return (
     <div
-      className="h-screen w-full text-[#f2e6d9] relative overflow-hidden font-['Stardos_Stencil']"
+      className="h-screen w-full text-[#f2e6d9] relative overflow-y-scroll overflow-x-hidden font-['Stardos_Stencil']"
       style={{
         backgroundImage: "url(/assets/bg2.png)",
         backgroundSize: "cover",
