@@ -1,14 +1,17 @@
 import express from "express";
 import cors from "cors";
 import axios from "axios";
-
+import dotenv from "dotenv";
+dotenv.config();
 const PAYMENT_VALIDATE_URL = process.env.PAYMENT_VALIDATE_URL;
+const INTERNAL_VALIDATE_PATH = "/api/validate";
 const PAYMENT_NOT_DONE_REGEX =
   /(payment.*not.*done|not paid|payment.*pending|unpaid)/i;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.options(INTERNAL_VALIDATE_PATH, cors());
 
 let prisma = null;
 let prismaInitTried = false;
@@ -115,7 +118,7 @@ const isPaymentNotCompleted = (payload) => {
   return PAYMENT_NOT_DONE_REGEX.test(String(message || ""));
 };
 
-app.post("/api/validate", async (req, res) => {
+app.post(INTERNAL_VALIDATE_PATH, async (req, res) => {
   try {
     const kfid = normalizeKfid(req?.body?.kfid);
 
@@ -124,7 +127,7 @@ app.post("/api/validate", async (req, res) => {
         res,
         400,
         "INVALID_KFID_FORMAT",
-        "Invalid KFID format. Use KF followed by 8 digits.",
+        "Invalid KFID format. Use KF followed by 8 digits."
       );
     }
 
@@ -133,7 +136,7 @@ app.post("/api/validate", async (req, res) => {
         res,
         500,
         "VALIDATION_API_NOT_CONFIGURED",
-        "Validation API is not configured. Set PAYMENT_VALIDATE_URL in environment variables.",
+        "Validation API is not configured. Set PAYMENT_VALIDATE_URL in environment variables."
       );
     }
 
@@ -143,7 +146,7 @@ app.post("/api/validate", async (req, res) => {
       {
         headers: { "Content-Type": "application/json" },
         timeout: 12000,
-      },
+      }
     );
 
     if (data?.success === false && isPaymentNotCompleted(data)) {
@@ -164,6 +167,32 @@ app.post("/api/validate", async (req, res) => {
       });
     }
 
+    if (data?.data && data.data.paid === false) {
+      return res.status(402).json({
+        ...data,
+        success: false,
+        code: "PAYMENT_NOT_COMPLETED",
+        message: data?.message || "Payment is not completed for this KFID.",
+      });
+    }
+
+    // Try to update/create user in database with the returned name
+    try {
+      const db = await ensurePrisma();
+      if (db) {
+        const validatedName = (data?.data && data.data.name) || "";
+        if (validatedName) {
+          await db.user.upsert({
+            where: { KFid: kfid },
+            update: { name: validatedName },
+            create: { KFid: kfid, name: validatedName },
+          });
+        }
+      }
+    } catch (ignore) {
+      // ignore user save fail here so validation still succeeds
+    }
+
     return res.status(200).json(data);
   } catch (error) {
     const upstreamStatus = error?.response?.status;
@@ -180,7 +209,7 @@ app.post("/api/validate", async (req, res) => {
         res,
         402,
         "PAYMENT_NOT_COMPLETED",
-        resolveUpstreamMessage(upstreamData),
+        resolveUpstreamMessage(upstreamData)
       );
     }
 
@@ -189,7 +218,7 @@ app.post("/api/validate", async (req, res) => {
         res,
         400,
         "VALIDATION_FAILED",
-        resolveUpstreamMessage(upstreamData),
+        resolveUpstreamMessage(upstreamData)
       );
     }
 
@@ -202,7 +231,7 @@ app.post("/api/validate", async (req, res) => {
         res,
         503,
         "VALIDATION_SERVICE_UNREACHABLE",
-        "Validation service unreachable. Please check internet/server and try again.",
+        "Validation service unreachable. Please check internet/server and try again."
       );
     }
 
@@ -210,7 +239,7 @@ app.post("/api/validate", async (req, res) => {
       res,
       500,
       "INTERNAL_VALIDATION_ERROR",
-      error?.message || "Payment validation failed",
+      error?.message || "Payment validation failed"
     );
   }
 });
@@ -221,24 +250,28 @@ app.post("/api/user", async (req, res) => {
     if (!db) return;
 
     const kfid = resolveKfid(req.body || {});
+    const name = req.body?.name;
     if (!kfid || !/^KF\d{8}$/.test(kfid)) {
       return sendError(res, 400, "INVALID_KFID_FORMAT", "Valid KFID required.");
     }
 
     const user = await db.user.upsert({
       where: { KFid: kfid },
-      update: {},
-      create: { KFid: kfid },
+      update: name ? { name } : {},
+      create: { KFid: kfid, name },
     });
 
-    return res.json({ ok: true, user: { id: user.id, kfid: user.KFid } });
+    return res.json({
+      ok: true,
+      user: { id: user.id, kfid: user.KFid, name: user.name },
+    });
   } catch (error) {
     console.error(error);
     return sendError(
       res,
       500,
       "INTERNAL_USER_API_ERROR",
-      "Server error while creating user.",
+      "Server error while creating user."
     );
   }
 });
@@ -249,7 +282,7 @@ app.post("/api/results", async (req, res) => {
     if (!db) return;
 
     const TOTAL_ROUNDS = 5;
-    const { bestTime, rounds } = req.body || {};
+    const { bestTime, rounds, name } = req.body || {};
     const kfid = resolveKfid(req.body || {});
 
     if (!kfid || !/^KF\d{8}$/.test(kfid)) {
@@ -260,54 +293,71 @@ app.post("/api/results", async (req, res) => {
 
     const user = await db.user.upsert({
       where: { KFid: kfid },
-      update: {},
-      create: { KFid: kfid },
+      update: name ? { name } : {},
+      create: { KFid: kfid, name },
     });
 
     const timeValue = Number(bestTime || 0);
 
-    const rec = await db.record.upsert({
+    const existingRec = await db.record.findUnique({
       where: { userId: user.id },
-      update: {
-        time: timeValue,
-        rounds: processedRounds || undefined,
-        updatedAt: new Date(),
-      },
-      create: {
-        userId: user.id,
-        time: timeValue,
-        rounds: processedRounds || undefined,
-      },
     });
+    let isBestAttempt = false;
 
-    if (Array.isArray(processedRounds)) {
-      for (const [index, val] of processedRounds.entries()) {
-        const roundNumber = index + 1;
-        const data = {
+    if (
+      !existingRec ||
+      !existingRec.time ||
+      existingRec.time === 0 ||
+      (timeValue > 0 && timeValue < existingRec.time)
+    ) {
+      isBestAttempt = true;
+    }
+
+    let rec = existingRec;
+    if (isBestAttempt) {
+      rec = await db.record.upsert({
+        where: { userId: user.id },
+        update: {
+          time: timeValue,
+          rounds: processedRounds || undefined,
+          updatedAt: new Date(),
+        },
+        create: {
           userId: user.id,
-          roundNumber,
-          time: typeof val === "number" ? val : null,
-          value: typeof val === "string" ? val : null,
-          metadata: typeof val === "object" && val !== null ? val : null,
-        };
+          time: timeValue,
+          rounds: processedRounds || undefined,
+        },
+      });
 
-        try {
-          await db.round.upsert({
-            where: {
-              userId_roundNumber: { userId: user.id, roundNumber },
-            },
-            update: {
-              time: data.time,
-              value: data.value,
-              metadata: data.metadata,
-            },
-            create: data,
-          });
-        } catch (error) {
-          console.error(
-            `Failed upserting round ${roundNumber} for user ${user.id}`,
-            error,
-          );
+      if (Array.isArray(processedRounds)) {
+        for (const [index, val] of processedRounds.entries()) {
+          const roundNumber = index + 1;
+          const data = {
+            userId: user.id,
+            roundNumber,
+            time: typeof val === "number" ? val : null,
+            value: typeof val === "string" ? val : null,
+            metadata: typeof val === "object" && val !== null ? val : null,
+          };
+
+          try {
+            await db.round.upsert({
+              where: {
+                userId_roundNumber: { userId: user.id, roundNumber },
+              },
+              update: {
+                time: data.time,
+                value: data.value,
+                metadata: data.metadata,
+              },
+              create: data,
+            });
+          } catch (error) {
+            console.error(
+              `Failed upserting round ${roundNumber} for user ${user.id}`,
+              error
+            );
+          }
         }
       }
     }
@@ -324,7 +374,7 @@ app.post("/api/results", async (req, res) => {
       res,
       500,
       "INTERNAL_RESULTS_API_ERROR",
-      "Server error while saving results.",
+      "Server error while saving results."
     );
   }
 });
@@ -344,6 +394,7 @@ app.get("/api/leaderboard", async (req, res) => {
     const data = rows.map((r, idx) => ({
       rank: idx + 1,
       kfid: r.user?.KFid || "--",
+      name: r.user?.name || "",
       bestTime: typeof r.time === "number" ? r.time : null,
       rounds: r.rounds || null,
     }));
@@ -355,7 +406,7 @@ app.get("/api/leaderboard", async (req, res) => {
       res,
       500,
       "INTERNAL_LEADERBOARD_API_ERROR",
-      "Server error while loading leaderboard.",
+      "Server error while loading leaderboard."
     );
   }
 });
@@ -422,7 +473,7 @@ app.get("/api/my-rounds", async (req, res) => {
       res,
       500,
       "INTERNAL_ROUNDS_API_ERROR",
-      "Server error while loading rounds.",
+      "Server error while loading rounds."
     );
   }
 });

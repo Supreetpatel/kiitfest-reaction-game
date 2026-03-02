@@ -61,6 +61,7 @@ const App = ({ currentUser }) => {
   const bottleWidth = 360;
 
   const [canViewResults, setCanViewResults] = useState(false);
+  const [scale, setScale] = useState(1);
   const pressedKeysRef = useRef(new Set());
   const pressedMouseKeysRef = useRef(new Set());
   const currentKfid =
@@ -98,11 +99,24 @@ const App = ({ currentUser }) => {
           rounds: newRounds,
           bestTime: computedBest,
           kfid: currentKfid || lastRoll || "",
+          name: currentUser?.name || "",
           played: true,
         },
       });
     },
   });
+
+  useEffect(() => {
+    const handleResize = () => {
+      // 1150 accounts for a comfortable gap at the bottom for laptops
+      const scaleY = window.innerHeight / 1150;
+      const scaleX = window.innerWidth / 1550;
+      setScale(Math.min(1, scaleX, scaleY));
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const pressedKeys = pressedKeysRef.current;
@@ -174,6 +188,7 @@ const App = ({ currentUser }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           kfid,
+          name: currentUser?.name || "",
           bestTime: computedBest,
           rounds: newRounds,
         }),
@@ -182,7 +197,7 @@ const App = ({ currentUser }) => {
       try {
         setLastRoll(String(kfid));
         const response = await fetch(
-          "/api/my-rounds?kfid=" + encodeURIComponent(kfid),
+          "/api/my-rounds?kfid=" + encodeURIComponent(kfid)
         );
         if (response.ok) {
           const payload = await response.json();
@@ -205,7 +220,7 @@ const App = ({ currentUser }) => {
     (async () => {
       try {
         const response = await fetch(
-          "/api/my-rounds?kfid=" + encodeURIComponent(kfid),
+          "/api/my-rounds?kfid=" + encodeURIComponent(kfid)
         );
         if (response.ok) {
           const payload = await response.json();
@@ -228,31 +243,31 @@ const App = ({ currentUser }) => {
 
   const boxes = [
     {
-      left: 17,
-      top: 19,
+      left: -500,
+      top: 0,
       width: 500,
       height: 169,
       label: "Round",
       value: String(level),
     },
     {
-      left: 524,
-      top: 19,
+      left: -500,
+      top: 200,
       width: 500,
       height: 169,
       label: "Time",
       value: lastMissed
         ? "MISSED"
         : lastTime == null
-          ? "--"
-          : `${Math.round(lastTime)} ms`,
+        ? "--"
+        : `${Math.round(lastTime)} ms`,
     },
   ];
 
   const displayRounds = (() => {
     const normalized = normalizeRounds(roundTimes);
     return Array.from({ length: TOTAL_ROUNDS }).map((_, index) =>
-      normalized[index] != null ? normalized[index] : null,
+      normalized[index] != null ? normalized[index] : null
     );
   })();
 
@@ -262,10 +277,15 @@ const App = ({ currentUser }) => {
       <div
         style={{
           minHeight: "100vh",
+          maxHeight: "100vh",
+          overflow: "hidden",
           backgroundImage: `url(${bgUrl})`,
           backgroundRepeat: "no-repeat",
           backgroundPosition: "center",
           backgroundSize: "cover",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
         <div
@@ -284,14 +304,16 @@ const App = ({ currentUser }) => {
             position: "relative",
             width: 1508,
             height: 958,
-            margin: "0 auto",
+            margin: "0",
             zIndex: 2,
+            transform: `scale(${scale})`,
+            transformOrigin: "center",
           }}
         >
           <div
             style={{
               position: "absolute",
-              top: 190,
+              top: 75,
               left: "50%",
               transform: "translateX(-50%)",
               padding: "10px 24px",
@@ -310,7 +332,11 @@ const App = ({ currentUser }) => {
           >
             {awaitingStart
               ? "PRESS ANY KEY TO START GAME"
-              : `TIME BETWEEN ROUNDS: ${timeToNextDrop == null ? "3.0 s" : `${(timeToNextDrop / 1000).toFixed(1)} s`}`}
+              : `TIME BETWEEN ROUNDS: ${
+                  timeToNextDrop == null
+                    ? "3.0 s"
+                    : `${(timeToNextDrop / 1000).toFixed(1)} s`
+                }`}
           </div>
 
           {boxes.map((box, index) => {
@@ -448,7 +474,7 @@ const App = ({ currentUser }) => {
               position: "absolute",
               left: "50%",
               transform: "translateX(-50%)",
-              bottom: 600,
+              bottom: 700,
               display: "flex",
               gap: 300,
             }}
@@ -458,7 +484,7 @@ const App = ({ currentUser }) => {
               const isDropping = dropKey === key;
               const pressOffset = isActive ? -6 : 0;
               const fallDuration = Math.max(300, BASE_FALL - (level - 1) * 30);
-              const fallDistance = 260;
+              const fallDistance = 600;
               const bottleTransform = `translateX(-50%) translateY(${pressOffset}px)`;
 
               return (
@@ -525,8 +551,8 @@ const App = ({ currentUser }) => {
                       animation: gameFinished
                         ? "none"
                         : isDropping
-                          ? `fall ${fallDuration}ms linear forwards`
-                          : "none",
+                        ? `fall ${fallDuration}ms linear forwards`
+                        : "none",
                       ["--fall-distance"]: `${fallDistance}px`,
                     }}
                   />
@@ -556,6 +582,8 @@ const App = ({ currentUser }) => {
             top: 12,
             zIndex: 9998,
             width: 370,
+            transform: `scale(${Math.max(0.75, scale)})`,
+            transformOrigin: "top right",
             pointerEvents: "none",
             height: "auto",
           }}
@@ -653,6 +681,8 @@ const App = ({ currentUser }) => {
             bottom: 20,
             right: 20,
             width: 200,
+            transform: `scale(${Math.max(0.75, scale)})`,
+            transformOrigin: "bottom right",
             height: "auto",
             pointerEvents: "none",
             zIndex: 9999,
@@ -676,7 +706,7 @@ const App = ({ currentUser }) => {
                 } catch (error) {
                   console.error(
                     "Failed persisting before result navigation",
-                    error,
+                    error
                   );
                 }
 
@@ -686,6 +716,7 @@ const App = ({ currentUser }) => {
                       rounds: roundTimes,
                       bestTime,
                       kfid: currentKfid || lastRoll || "",
+                      name: currentUser?.name || "",
                       played: true,
                     },
                   });

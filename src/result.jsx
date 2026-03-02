@@ -55,7 +55,7 @@ export default function Result({ currentUser }) {
     (async () => {
       const st = (location && location.state) || {};
       const params = new URLSearchParams(
-        location.search || window.location.search,
+        location.search || window.location.search
       );
       const queryKfid = params.get("kfid") || params.get("roll");
       const hasKfid = Boolean(queryKfid);
@@ -91,7 +91,7 @@ export default function Result({ currentUser }) {
       if (kfid) {
         try {
           const myRes = await fetch(
-            `/api/my-rounds?kfid=${encodeURIComponent(kfid)}`,
+            `/api/my-rounds?kfid=${encodeURIComponent(kfid)}`
           );
           if (myRes.ok) {
             const payload = await myRes.json();
@@ -120,15 +120,15 @@ export default function Result({ currentUser }) {
     return () => clearTimeout(redirectTimer);
   }, [navigate]);
 
-  const currentKfid = useMemo(() => {
+  const currentName = useMemo(() => {
     const st = (location && location.state) || {};
-    if (typeof st.kfid === "string" && st.kfid.trim()) return st.kfid.trim();
+    if (typeof st.name === "string" && st.name.trim()) return st.name.trim();
     if (
       currentUser &&
-      typeof currentUser.kfid === "string" &&
-      currentUser.kfid.trim()
+      typeof currentUser.name === "string" &&
+      currentUser.name.trim()
     ) {
-      return currentUser.kfid.trim();
+      return currentUser.name.trim();
     }
     return "--";
   }, [location, currentUser]);
@@ -157,10 +157,7 @@ export default function Result({ currentUser }) {
     if (Array.isArray(leaderboard) && leaderboard.length > 0) {
       return leaderboard.map((entry, idx) => ({
         rank: idx + 1,
-        kfid:
-          (entry &&
-            (entry.kfid || entry.rollnumber || entry.rollNo || entry.roll)) ||
-          "--",
+        name: (entry && entry.name) || "--",
         bestTime:
           entry && typeof entry.bestTime === "number"
             ? `${Math.round(entry.bestTime)} ms`
@@ -170,13 +167,13 @@ export default function Result({ currentUser }) {
 
     return Array.from({ length: 10 }).map((_, idx) => ({
       rank: idx + 1,
-      kfid: idx + 1 === (myRank || -1) ? currentKfid : "--",
+      name: idx + 1 === (myRank || -1) ? currentName : "--",
       bestTime:
         idx + 1 === (myRank || -1) && typeof bestTime === "number"
           ? `${Math.round(bestTime)} ms`
           : "--",
     }));
-  }, [leaderboard, myRank, currentKfid, bestTime]);
+  }, [leaderboard, myRank, currentName, bestTime]);
 
   return (
     <div
@@ -248,7 +245,7 @@ export default function Result({ currentUser }) {
               <thead>
                 <tr className="bg-black/30 text-[#d9a067] uppercase tracking-[0.2em] text-[11px] md:text-xs">
                   <th className="py-3 px-3 text-left">Rank</th>
-                  <th className="py-3 px-3 text-left">KFID</th>
+                  <th className="py-3 px-3 text-left">Name</th>
                   <th className="py-3 px-3 text-right">Best Time</th>
                 </tr>
               </thead>
@@ -259,7 +256,7 @@ export default function Result({ currentUser }) {
                     className="border-t border-[#8c5e3c]/30 hover:bg-white/5"
                   >
                     <td className="py-2.5 px-3 text-white">{row.rank}</td>
-                    <td className="py-2.5 px-3 text-white">{row.kfid}</td>
+                    <td className="py-2.5 px-3 text-white">{row.name}</td>
                     <td className="py-2.5 px-3 text-right text-[#ffbf75]">
                       {row.bestTime}
                     </td>

@@ -9,6 +9,7 @@ import Authenticate from "./Authenticate";
 import Homepage from "./Homepage";
 import Game from "./Game";
 import Result from "./result";
+import Leaderboard from "./Leaderboard";
 import ProtectedRoute from "./middleware/ProtectedRoute";
 
 export default function App() {
@@ -55,6 +56,15 @@ export default function App() {
             element={
               <ProtectedRoute currentUser={currentUser}>
                 <Result currentUser={currentUser} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/leaderboard"
+            element={
+              <ProtectedRoute currentUser={currentUser}>
+                <Leaderboard />
               </ProtectedRoute>
             }
           />
