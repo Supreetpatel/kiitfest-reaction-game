@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,6 +10,7 @@ datasource db {
 model User {
   id     String  @id @default(cuid())
   KFid   String  @unique
+  name   String?
   record Record?
   rounds Round[]
 
@@ -18,11 +18,11 @@ model User {
 }
 
 model Record {
-  id   String @id @default(cuid())
-  time Int
+  id     String @id @default(cuid())
+  time   Int
   rounds Json?
 
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String @unique
 
   createdAt DateTime @default(now())
@@ -32,16 +32,16 @@ model Record {
 }
 
 model Round {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   roundNumber Int
   time        Int?
   value       String?
   metadata    Json?
 
-  user   User   @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
 
   createdAt DateTime @default(now())
-  @@index([userId, roundNumber])
+
   @@unique([userId, roundNumber], name: "userId_roundNumber")
 }

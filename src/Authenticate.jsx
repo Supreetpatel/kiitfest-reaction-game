@@ -7,24 +7,6 @@ import midimg from "./assets/mid.png";
 import screw from "./assets/screw.png";
 
 const VALIDATE_API_URL = "/api/validate";
-const KFID_STORAGE_KEY = "checked-kfid-participants";
-
-const getCheckedKfids = () => {
-  try {
-    const raw = window.localStorage.getItem(KFID_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveCheckedKfid = (kfid) => {
-  const current = getCheckedKfids();
-  if (current.includes(kfid)) return;
-  const next = [...current, kfid];
-  window.localStorage.setItem(KFID_STORAGE_KEY, JSON.stringify(next));
-};
 
 const ScrewDecoration = ({ style, animClass }) => (
   <div className="pointer-events-none absolute z-50" style={style}>
@@ -64,15 +46,7 @@ export default function Authenticate({ setCurrentUser }) {
 
     if (!/^KF\d{8}$/.test(normalizedKfid)) {
       setErrorMessage(
-        "KFID must be in format KF + 8 digits (e.g. KF12345678).",
-      );
-      return;
-    }
-
-    const alreadyChecked = getCheckedKfids().includes(normalizedKfid);
-    if (alreadyChecked) {
-      setErrorMessage(
-        "This participant has already been checked and cannot play again.",
+        "KFID must be in format KF + 8 digits (e.g. KF12345678)."
       );
       return;
     }
@@ -87,13 +61,11 @@ export default function Authenticate({ setCurrentUser }) {
         {
           kfid: normalizedKfid,
         },
-        { timeout: 12000 },
+        { timeout: 12000 }
       );
       const data = response?.data || null;
 
       if (data?.success) {
-        saveCheckedKfid(normalizedKfid);
-
         if (typeof setCurrentUser === "function") {
           setCurrentUser({
             kfid: normalizedKfid,
@@ -116,7 +88,7 @@ export default function Authenticate({ setCurrentUser }) {
 
       if (code === "PAYMENT_NOT_COMPLETED" || status === 402) {
         setErrorMessage(
-          backendMessage || "Payment is not completed for this KFID.",
+          backendMessage || "Payment is not completed for this KFID."
         );
         return;
       }
@@ -138,7 +110,7 @@ export default function Authenticate({ setCurrentUser }) {
         networkCode === "ERR_NETWORK"
       ) {
         setErrorMessage(
-          "Validation service unreachable. Please check internet/server and try again.",
+          "Validation service unreachable. Please check internet/server and try again."
         );
         return;
       }
@@ -193,16 +165,19 @@ export default function Authenticate({ setCurrentUser }) {
       ></div>
 
       {/* --- LOGO --- */}
-      <div
+      <a
+        href="https://kiitfest.org"
+        target="_blank"
+        rel="nooppener noreferrer"
         className="absolute top-0 left-0 w-full flex justify-center z-50 anim-float"
         style={{ paddingTop: logoTop }}
       >
         <img
           src={kiitfestImg}
           alt="KIIT Fest Logo"
-          className="w-48 md:w-56 drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]"
+          className="w-48 md:w-56 cursor-pointer drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]"
         />
-      </div>
+      </a>
 
       {/* --- SCREWS --- */}
       <ScrewDecoration

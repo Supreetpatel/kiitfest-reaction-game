@@ -14,7 +14,7 @@ const ScrewButton = ({ style, animClass }) => (
   </div>
 );
 
-export default function Home() {
+export default function Home({ currentUser }) {
   const [isReady, setIsReady] = useState(false);
   const navigate = useNavigate();
 
@@ -30,7 +30,7 @@ export default function Home() {
 
   return (
     <div
-      className="h-screen w-full text-[#f2e6d9] relative overflow-hidden font-['Stardos_Stencil']"
+      className="h-screen w-full text-[#f2e6d9] relative overflow-y-scroll overflow-x-hidden font-['Stardos_Stencil']"
       style={{
         backgroundImage: "url(/assets/bg2.png)",
         backgroundSize: "cover",
@@ -78,16 +78,18 @@ export default function Home() {
       <div className="absolute inset-0 bg-black/50 pointer-events-none"></div>
 
       {/* KIITFest Logo */}
-      <div
+      <a
+        href="https://kiitfest.org"
+        target="_blank"
         className="absolute z-30 anim-float"
         style={{ top: logoTop, left: logoLeft }}
       >
         <img
           src={kiitfestImg}
           alt="KIITFest"
-          className="h-14 md:h-16 w-auto object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]"
+          className="h-14 md:h-16 cursor-pointer w-auto object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]"
         />
-      </div>
+      </a>
 
       {/* Spinning Screws */}
       <ScrewButton
@@ -156,35 +158,57 @@ export default function Home() {
 
           <div className="flex flex-col items-center gap-8">
             <label
-              className={`anim-sweep-auto relative flex items-center gap-5 bg-[#0a0604]/80 backdrop-blur-md px-8 py-5 rounded-xl border transition-all duration-500 overflow-hidden shadow-xl ${isReady ? "border-[#cf7b44]/80 scale-[1.02]" : "border-[#8c5e3c]/40 hover:border-[#cf7b44]/50"}`}
+              className={`anim-sweep-auto relative flex items-center gap-5 bg-[#0a0604]/80 backdrop-blur-md px-8 py-5 rounded-xl border transition-all duration-500 overflow-hidden shadow-xl ${
+                isReady
+                  ? "border-[#cf7b44]/80 scale-[1.02]"
+                  : "border-[#8c5e3c]/40 hover:border-[#cf7b44]/50"
+              }`}
             >
               <div className="relative flex items-center justify-center z-10 w-8 h-8">
                 <input
                   type="checkbox"
-                  className="peer relative w-8 h-8 appearance-none border-2 border-[#8c5e3c] rounded-md bg-black/60 checked:bg-[#cf7b44]/20 checked:border-[#cf7b44] transition-all duration-500 checked:rotate-90"
+                  className="peer relative w-8 h-8 appearance-none border-2 border-[#8c5e3c] rounded-md bg-black/60 checked:bg-[#cf7b44]/20 checked:border-[#cf7b44] transition-all duration-500 checked:rotate-90 cursor-pointer"
                   checked={isReady}
                   onChange={(e) => setIsReady(e.target.checked)}
                 />
                 <img
                   src={bottle1}
                   alt="Ready"
-                  className={`absolute h-6 w-auto object-contain pointer-events-none transition-all duration-500 ${isReady ? "scale-100 -rotate-90 opacity-100" : "scale-0 opacity-0"}`}
+                  className={`absolute h-6 w-auto object-contain pointer-events-none transition-all duration-500 ${
+                    isReady
+                      ? "scale-100 -rotate-90 opacity-100"
+                      : "scale-0 opacity-0"
+                  }`}
                 />
               </div>
               <span
-                className={`tracking-[0.15em] font-medium select-none transition-all duration-500 z-10 ${isReady ? "text-[#cf7b44]" : "text-gray-400"}`}
+                className={`tracking-[0.15em] font-medium select-none transition-all duration-500 z-10 ${
+                  isReady ? "text-[#cf7b44]" : "text-gray-400"
+                }`}
               >
                 I HAVE READ THE INSTRUCTIONS AND AM READY TO PLAY
               </span>
             </label>
 
-            <button
-              disabled={!isReady}
-              onClick={() => navigate("/game")}
-              className={`relative w-64 py-4 rounded-xl font-bold tracking-[0.2em] text-2xl border transition-all duration-500 overflow-hidden cursor-pointer ${isReady ? "bg-[#8c5e3c] text-[#f2e6d9] border-[#cf7b44] btn-ready hover:bg-[#a66a42]" : "bg-gray-900 text-gray-600 opacity-70"}`}
-            >
-              START
-            </button>
+            <div className="flex flex-col md:flex-row gap-4">
+              <button
+                disabled={!isReady}
+                onClick={() => navigate("/game")}
+                className={`relative w-64 py-4 rounded-xl font-bold tracking-[0.2em] text-2xl border transition-all duration-500 overflow-hidden cursor-pointer ${
+                  isReady
+                    ? "bg-[#8c5e3c] text-[#f2e6d9] border-[#cf7b44] btn-ready hover:bg-[#a66a42]"
+                    : "bg-gray-900 text-gray-600 opacity-70"
+                }`}
+              >
+                START
+              </button>
+              <button
+                onClick={() => navigate("/leaderboard")}
+                className="relative w-64 py-4 rounded-xl font-bold tracking-[0.2em] text-2xl border border-[#8c5e3c]/40 text-[#d9a067] bg-black/40 hover:bg-[#8c5e3c]/20 hover:border-[#cf7b44]/70 transition-all duration-500 cursor-pointer"
+              >
+                LEADERBOARD
+              </button>
+            </div>
           </div>
         </main>
       </div>
